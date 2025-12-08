@@ -97,6 +97,7 @@
             camera.position.set(0, 3, 30); 
             camera.lookAt(0, 1, 0);
 
+<<<<<<< HEAD
             // 3. LIGHTING
             const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 2.0);
             scene.add(hemiLight);
@@ -106,6 +107,30 @@
             scene.add(dirLight);
             const ambientLight = new THREE.AmbientLight(0xffccaa, 0.5); 
             scene.add(ambientLight);
+=======
+            // 3. LIGHTING (REVISI: WARM STREET SETUP)
+
+            // 1. Hemisphere Light: Kunci agar jalanan tidak gelap gulita.
+            // Ini mensimulasikan cahaya langit (atas) dan pantulan tanah (bawah).
+            // Warna Langit: 0xffeeb1 (Kuning Hangat / Sore)
+            // Warna Tanah: 0x080820 (Biru Gelap / Aspal Malam)
+            // Intensitas: 2.0 (Cukup terang untuk menerangi jalanan)
+            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 2.0);
+            scene.add(hemiLight);
+
+            // 2. Directional Light: Simulasi Matahari/Bulan (memberi arah bayangan & highlight warm)
+            // Warna: 0xffaa33 (Oranye Hangat)
+            const dirLight = new THREE.DirectionalLight(0xffaa33, 1.0);
+            dirLight.position.set(10, 20, 10); // Posisi cahaya dari atas serong
+            scene.add(dirLight);
+
+            // 3. (Opsional) Ambient Light Tambahan: Untuk mencerahkan sudut-sudut yang masih hitam pekat
+            const ambientLight = new THREE.AmbientLight(0xffccaa, 0.5); // Warm lembut, intensitas rendah
+            scene.add(ambientLight);
+
+            // B. Directional Light 1 (Moonlight - Cool)
+            // Memberikan highlight biru di atap gedung (kontras dingin)
+>>>>>>> 1eef5662909ec8c31ce893872306e5cd954f5801
             const moonLight = new THREE.DirectionalLight(0xaaccff, 0.5); 
             moonLight.position.set(-50, 100, -50);
             scene.add(moonLight);
