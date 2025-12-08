@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kamurocho - Warm Street Edition</title>
+    <title>Kamurocho - The Encounter</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #050505; }
         
@@ -12,7 +12,7 @@
             bottom: 30px;
             width: 100%;
             text-align: center;
-            color: rgba(255, 200, 150, 0.8); /* Teks agak oranye */
+            color: rgba(255, 200, 150, 0.8);
             font-family: sans-serif;
             font-size: 14px;
             pointer-events: none;
@@ -28,11 +28,14 @@
             font-family: monospace; 
             font-size: 18px;
             z-index: 20;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border: 1px solid #ffaa00;
         }
     </style>
 </head>
 <body>
-    <div id="loading">MEMUAT KOTA...</div>
+    <div id="loading">MEMUAT ASET YAKUZA...</div>
     
     <div id="instructions">
         KLIK LAYAR | WASD: JALAN | SHIFT: LARI | F: TERBANG
@@ -56,8 +59,8 @@
         import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
         import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+        // --- GLOBAL VARIABLES ---
         let camera, scene, renderer, controls, composer;
-        
         let prevTime = performance.now();
         const velocity = new THREE.Vector3();
         const direction = new THREE.Vector3();
@@ -66,43 +69,46 @@
         let moveUp = false, moveDown = false; 
         let isFreeCam = false;
 
+        // --- CUTSCENE VARIABLES (UPDATED) ---
+        const mixers = []; 
+        const clock = new THREE.Clock();
+        
+        // Kita menggunakan "Group" untuk menampung kedua versi (Idle & Walk)
+        let kiryuGroup, majimaGroup;
+        
+        // Object untuk menyimpan referensi mesh di dalam group
+        // Struktur: { idleMesh: Object3D, walkMesh: Object3D }
+        let kiryuMeshes = { idleMesh: null, walkMesh: null };
+        let majimaMeshes = { idleMesh: null, walkMesh: null };
+        
+        let cutsceneFinished = false; 
+
         init();
         animate();
 
         function init() {
             // 1. SCENE
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020205); // Langit Hampir Hitam
-            
-            // Fog sangat tipis berwarna gelap untuk menyatukan jarak pandang
+            scene.background = new THREE.Color(0x020205); 
             scene.fog = new THREE.FogExp2(0x020205, 0.002); 
 
             // 2. KAMERA
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
-            camera.position.y = 1.6;
+            camera.position.set(0, 3, 30); 
+            camera.lookAt(0, 1, 0);
 
-            // 3. LIGHTING (REVISI: WARM STREET SETUP)
-
-            // A. Hemisphere Light (Paling Penting untuk Aspal Warm)
-            // SkyColor (Atas): Biru Tua Gelap (Malam)
-            // GroundColor (Bawah): Oranye/Coklat Hangat (Pantulan Lampu Jalan)
-            // Intensitas 2.5 agar jalanan terlihat jelas (medium intensity) tapi tidak silau.
-            const hemiLight = new THREE.HemisphereLight(0x000033, 0x553311, 2.5);
-            hemiLight.position.set(0, 50, 0);
+            // 3. LIGHTING
+            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 2.0);
             scene.add(hemiLight);
-
-            // B. Directional Light 1 (Moonlight - Cool)
-            // Memberikan highlight biru di atap gedung (kontras dingin)
+            const dirLight = new THREE.DirectionalLight(0xffaa33, 1.0);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true; 
+            scene.add(dirLight);
+            const ambientLight = new THREE.AmbientLight(0xffccaa, 0.5); 
+            scene.add(ambientLight);
             const moonLight = new THREE.DirectionalLight(0xaaccff, 0.5); 
             moonLight.position.set(-50, 100, -50);
-            moonLight.castShadow = true;
-            moonLight.shadow.mapSize.width = 4096;
-            moonLight.shadow.mapSize.height = 4096;
             scene.add(moonLight);
-
-            // C. Directional Light 2 (Street Ambience - Warm)
-            // Cahaya tambahan dari sudut rendah berwarna oranye untuk mengisi bayangan
-            // Memberikan kesan "kota penuh lampu sodium/kuning"
             const streetFill = new THREE.DirectionalLight(0xffaa66, 0.5);
             streetFill.position.set(50, 30, 50);
             scene.add(streetFill);
@@ -111,22 +117,18 @@
             renderer = new THREE.WebGLRenderer({ antialias: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-            // Reinhard Tone Mapping menjaga warna warm tetap kaya (tidak pucat)
             renderer.toneMapping = THREE.ReinhardToneMapping; 
             renderer.toneMappingExposure = 1.1; 
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.body.appendChild(renderer.domElement);
 
-            // 5. POST-PROCESSING (BLOOM)
+            // 5. POST-PROCESSING
             const renderScene = new RenderPass(scene, camera);
-
-            // Bloom diset agar neon tetap menyala, tapi jalanan warm tidak ikut "silau"
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            bloomPass.threshold = 0.8; // Hanya benda sangat terang yang glowing
-            bloomPass.strength = 0.7;  // Glow lembut
+            bloomPass.threshold = 0.8; 
+            bloomPass.strength = 0.7;  
             bloomPass.radius = 0.4;
-
             const outputPass = new OutputPass();
 
             composer = new EffectComposer(renderer);
@@ -134,44 +136,49 @@
             composer.addPass(bloomPass);
             composer.addPass(outputPass);
 
-            // 6. LOAD MODEL
+            // 6. ASSET LOADING (ENVIRONMENT)
             const loader = new GLTFLoader();
             loader.load('./Kamurocho.glb', function (gltf) {
                 const model = gltf.scene;
                 model.scale.set(0.03, 0.03, 0.03); 
-
                 model.traverse(function (child) {
                     if (child.isMesh) {
                         child.castShadow = true;    
                         child.receiveShadow = true; 
-
-                        // --- MATERIAL SETUP ---
-                        
                         if (child.material.map) {
-                            if (!child.material.emissiveMap) {
-                                child.material.emissiveMap = child.material.map;
-                            }
+                            if (!child.material.emissiveMap) child.material.emissiveMap = child.material.map;
                             child.material.emissive = new THREE.Color(0xffffff);
-                            // Intensitas neon cukup 1.5.
-                            // Karena environment sudah warm, neon tidak perlu terlalu ekstrem.
                             child.material.emissiveIntensity = 1.5; 
                         }
-
-                        // --- JALANAN ASPAL (LOGIKA PENTING) ---
                         if (child.material) {
-                            // Roughness agak tinggi (0.4) agar aspal "menangkap" warna warm dari Hemisphere Light
-                            // Jika terlalu licin (0.1), dia hanya memantulkan langit yang hitam.
                             child.material.roughness = 0.4; 
-                            child.material.metalness = 0.2; // Sedikit kilap saja
+                            child.material.metalness = 0.2; 
                         }
                     }
                 });
-
                 scene.add(model);
                 document.getElementById('loading').style.display = 'none';
             });
 
-            // 7. CONTROLS
+            // 7. CHARACTER LOADING (NEW STRATEGY: GROUPS)
+            const forwardPoint = new THREE.Vector3(0, 0, 1000);
+
+            // Buat Group (Wadah Kosong) untuk masing-masing karakter
+            kiryuGroup = new THREE.Group();
+            kiryuGroup.position.set(0, 0, 50); // Posisi Awal Kiryu
+            kiryuGroup.lookAt(forwardPoint);    // Hadap Tengah
+            scene.add(kiryuGroup);
+
+            majimaGroup = new THREE.Group();
+            majimaGroup.position.set(0, 0, 330); // Posisi Awal Majima
+            majimaGroup.lookAt(0, 0, -1000);    // Hadap Tengah
+            scene.add(majimaGroup);
+
+            // Panggil Loader Spesial
+            loadCharacterDualVersion('./kiryu_idle.glb', './kiryu_walking.glb', kiryuGroup, true);
+            loadCharacterDualVersion('./majima_idle.glb', './majima_walking.glb', majimaGroup, false);
+
+            // 8. CONTROLS
             controls = new PointerLockControls(camera, document.body);
             document.body.addEventListener('click', () => controls.lock());
             
@@ -206,33 +213,129 @@
             });
         }
 
+        // --- SOLUSI FINAL: DUAL MESH LOADER ---
+        // Fungsi ini memuat DUA model sekaligus ke dalam satu Group.
+        function loadCharacterDualVersion(idleFile, walkingFile, targetGroup, isKiryu) {
+            const loader = new GLTFLoader();
+
+            // 1. LOAD MODEL WALKING (Ditampilkan Pertama)
+            loader.load(walkingFile, function (gltf) {
+                const model = gltf.scene;
+                model.scale.set(20.5, 20.5, 20.5); // Sesuaikan ukuran
+                model.traverse(c => { if(c.isMesh) c.castShadow = true; });
+                
+                // Masukkan ke dalam Group (bukan Scene langsung)
+                targetGroup.add(model);
+                
+                // Simpan referensi
+                if (isKiryu) kiryuMeshes.walkMesh = model;
+                else majimaMeshes.walkMesh = model;
+
+                // Setup Animasi
+                const mixer = new THREE.AnimationMixer(model);
+                mixers.push(mixer);
+                const action = mixer.clipAction(gltf.animations[0]);
+                action.play();
+            });
+
+            // 2. LOAD MODEL IDLE (Disembunyikan Pertama)
+            loader.load(idleFile, function (gltf) {
+                const model = gltf.scene;
+                model.scale.set(20.5, 20.5, 20.5);
+                model.traverse(c => { if(c.isMesh) c.castShadow = true; });
+                
+                // Sembunyikan dulu!
+                model.visible = false;
+
+                // Masukkan ke dalam Group yang sama
+                targetGroup.add(model);
+
+                // Simpan referensi
+                if (isKiryu) kiryuMeshes.idleMesh = model;
+                else majimaMeshes.idleMesh = model;
+
+                // Setup Animasi
+                const mixer = new THREE.AnimationMixer(model);
+                mixers.push(mixer);
+                const action = mixer.clipAction(gltf.animations[0]);
+                action.play();
+            });
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             
             const time = performance.now();
-            if (controls.isLocked) {
-                const delta = (time - prevTime) / 1000;
-                
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= velocity.y * 10.0 * delta;
+            const deltaControl = (time - prevTime) / 1000;
+            const deltaMixer = clock.getDelta();
 
+            // UPDATE SEMUA ANIMASI (Baik yang visible maupun hidden tetap di-update agar sync)
+            mixers.forEach(mixer => mixer.update(deltaMixer));
+
+            // --- CUTSCENE LOGIC (GROUP MOVEMENT) ---
+            if (kiryuGroup && majimaGroup && !cutsceneFinished) {
+                // Pastikan mesh sudah terload sebelum mulai gerak
+                if (kiryuMeshes.walkMesh && majimaMeshes.walkMesh) {
+                    
+                    const moveSpeed = 3.5 * deltaMixer;
+                    const stopDistance = 60.0;
+
+                    // Hitung jarak antar Group
+                    const distance = kiryuGroup.position.distanceTo(majimaGroup.position);
+
+                    if (distance > stopDistance) {
+                        // --- FASE JALAN ---
+                        // Gerakkan GROUP-nya, bukan mesh-nya
+                        kiryuGroup.translateZ(moveSpeed);
+                        majimaGroup.translateZ(moveSpeed);
+                        
+                    } else {
+                        // --- FASE BERHENTI (SWAP VISIBILITY) ---
+                        cutsceneFinished = true;
+                        console.log("Cutscene: Switching to Idle Mode");
+            
+                        const offsetCorrection = -5; // <--- COBA UBAH ANGKA INI
+
+                        // SWAP KIRYU
+                        if (kiryuMeshes.walkMesh && kiryuMeshes.idleMesh) {
+                            kiryuMeshes.walkMesh.visible = false;
+                            
+                            // Terapkan koreksi posisi mundur pada model Idle
+                            kiryuMeshes.idleMesh.position.z = offsetCorrection; 
+                            
+                            kiryuMeshes.idleMesh.visible = true;
+                        }
+
+                        // SWAP MAJIMA
+                        if (majimaMeshes.walkMesh && majimaMeshes.idleMesh) {
+                            majimaMeshes.walkMesh.visible = false;
+                            
+                            // Terapkan koreksi posisi mundur pada model Idle
+                            majimaMeshes.idleMesh.position.z = offsetCorrection;
+                            
+                            majimaMeshes.idleMesh.visible = true;
+                        }
+                    }
+                }
+            }
+
+            // PLAYER CONTROLS
+            if (controls.isLocked) {
+                velocity.x -= velocity.x * 10.0 * deltaControl;
+                velocity.z -= velocity.z * 10.0 * deltaControl;
+                velocity.y -= velocity.y * 10.0 * deltaControl;
                 direction.z = Number(moveForward) - Number(moveBackward);
                 direction.x = Number(moveRight) - Number(moveLeft);
                 direction.normalize();
-
                 const speed = (moveDown && !isFreeCam) ? runSpeed : walkSpeed; 
-
-                if (moveForward || moveBackward) velocity.z -= direction.z * speed * 20.0 * delta;
-                if (moveLeft || moveRight) velocity.x -= direction.x * speed * 20.0 * delta;
-
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                
+                if (moveForward || moveBackward) velocity.z -= direction.z * speed * 20.0 * deltaControl;
+                if (moveLeft || moveRight) velocity.x -= direction.x * speed * 20.0 * deltaControl;
+                controls.moveRight(-velocity.x * deltaControl);
+                controls.moveForward(-velocity.z * deltaControl);
                 if (isFreeCam) {
-                    if (moveUp) velocity.y += speed * 20.0 * delta; 
-                    if (moveDown) velocity.y -= speed * 20.0 * delta; 
-                    controls.getObject().position.y += velocity.y * delta;
+                    if (moveUp) velocity.y += speed * 20.0 * deltaControl; 
+                    if (moveDown) velocity.y -= speed * 20.0 * deltaControl; 
+                    controls.getObject().position.y += velocity.y * deltaControl;
                 } else {
                     controls.getObject().position.y = 1.6;
                 }
