@@ -3,42 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kamurocho - The Encounter</title>
+    <title>Kamurocho: Final Ghost Mode Fix (With Collision)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
     <style>
+        /* CSS Reset sederhana agar tampilan full screen tanpa margin */
         body { margin: 0; overflow: hidden; background-color: #050505; }
         
+        /* Class umum untuk elemen UI agar tidak mengganggu klik mouse (pointer-events: none) */
+        .ui-element { pointer-events: none; transition: opacity 0.3s; }
+        
+        /* Styling teks instruksi di bawah layar */
         #instructions {
-            position: absolute;
-            bottom: 30px;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 200, 150, 0.8);
-            font-family: sans-serif;
-            font-size: 14px;
-            pointer-events: none;
-            letter-spacing: 2px;
-            text-shadow: 0 0 5px #000;
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            color: rgba(255, 200, 150, 0.9); font-family: 'Segoe UI', sans-serif;
+            font-size: 14px; letter-spacing: 3px; text-shadow: 0 0 10px #ffaa00;
+            z-index: 10; text-transform: uppercase; display: none; /* Sembunyi saat loading */
         }
 
+        /* Styling panduan kontrol di pojok kanan atas */
+        #controls-hint {
+            position: absolute; top: 20px; right: 20px; text-align: right;
+            color: rgba(255, 255, 255, 0.7); font-family: monospace; font-size: 12px;
+            z-index: 10; line-height: 1.6; background: rgba(0,0,0,0.5);
+            padding: 10px; border-radius: 4px;
+        }
+
+        /* Styling indikator status (Paused/Rewind) di pojok kiri atas */
+        #status-indicator {
+            position: absolute; top: 20px; left: 20px;
+            color: #ffaa00; font-family: monospace; font-size: 14px; font-weight: bold;
+            z-index: 10; opacity: 0; /* Default sembunyi */
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        /* Styling Loading Screen di tengah */
         #loading {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            color: #ffaa00; 
-            font-family: monospace; 
-            font-size: 18px;
-            z-index: 20;
-            background: rgba(0,0,0,0.7);
-            padding: 10px 20px;
-            border: 1px solid #ffaa00;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #ffaa00; font-family: monospace; font-size: 20px; z-index: 20;
+            background: rgba(0,0,0,0.9); padding: 20px 40px; border: 1px solid #ffaa00;
+            box-shadow: 0 0 30px rgba(255, 170, 0, 0.3); text-align: center;
+        }
+        
+        /* Bar Loading progress */
+        #loading-bar-container { width: 300px; height: 4px; background: #333; margin-top: 15px; position: relative; }
+        #loading-bar { width: 0%; height: 100%; background: #ffaa00; transition: width 0.1s; }
+
+        /* [G8 - Transparency UI] Layer hitam untuk efek Fade In/Out */
+        #black-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #000; opacity: 0; z-index: 100; /* Opacity 0 artinya transparan */
+            display: flex; justify-content: center; align-items: center; pointer-events: none;
+        }
+
+        /* Teks Ending Credit */
+        #end-text {
+            color: #e0e0e0; font-family: 'Times New Roman', serif; font-style: italic;
+            font-size: 80px; opacity: 0; letter-spacing: 5px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.2);
+        }
+
+        /* Copyright Footer */
+        #copyright {
+            position: absolute; bottom: 20px; right: 30px;
+            color: #666; font-family: sans-serif; font-size: 12px; opacity: 0;
         }
     </style>
 </head>
 <body>
-    <div id="loading">MEMUAT ASET YAKUZA...</div>
+    <div id="loading" class="ui-element">
+        SYSTEM BOOT...
+        <div id="loading-bar-container"><div id="loading-bar"></div></div>
+    </div>
     
-    <div id="instructions">
-        KLIK LAYAR | WASD: JALAN | SHIFT: LARI | F: TERBANG
+    <div id="instructions" class="ui-element">[ TEKAN 'P' UNTUK MEMULAI ]</div>
+    
+    <div id="status-indicator" class="ui-element">PAUSED</div>
+
+    <div id="controls-hint" class="ui-element">
+        <b>CONTROLS</b><br>
+        [P] REPLAY / START<br>
+        [SPASI] PAUSE (CUTSCENE)<br>
+        [<-] REWIND (TAHAN)<br>
+        [->] MAJU (TAHAN)<br>
+        [H] HIDE/SHOW GUIDE<br>
+        <br>
+        <b>FREECAM MODE (GHOST)</b><br>
+        [F] ON/OFF FREECAM<br>
+        [W/A/S/D] TERBANG / GERAK<br>
+        [MOUSE] LIHAT SEKELILING<br>
+        [SPASI] NAIK<br>
+        [SHIFT] TURUN
+    </div>
+
+    <div id="black-screen">
+        <div id="end-text">End</div>
+        <div id="copyright">©SEGA</div>
     </div>
 
     <script type="importmap">
@@ -51,185 +112,275 @@
     </script>
 
     <script type="module">
+        // Import modul-modul penting dari Three.js
         import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'; // Untuk load model .glb
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'; // Untuk freecam
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'; // Post-processing core
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'; // Render scene standar
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'; // Efek Glow/Bloom
+        import { BokehPass } from 'three/addons/postprocessing/BokehPass.js'; // Efek Blur/DOF
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'; // Output final warna
+        import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js'; // Untuk clone karakter rig
 
-        // --- GLOBAL VARIABLES ---
+        // --- KONFIGURASI TIMING (Angka detik untuk sinkronisasi) ---
+        const MAJIMA_WALK_TIME = 14.0;    // Majima jalan selama 14 detik
+        const KIRYU_DELAY_TIME = -1.0;    // Kiryu mulai jalan 1 detik lebih awal dari Majima stop (overlapping)
+        const KIRYU_WALK_TIME = 8.0;      // Kiryu jalan selama 8 detik
+        const MAJIMA_SPEAK_START = 48.0;  // Detik ke-48 Majima mulai bicara
+        const MAJIMA_SPEAK_END = 51.5;    // Detik ke-51.5 Majima selesai bicara
+        const TOTAL_DURATION = 68.0;      // Total durasi video/audio
+
+        // --- KOORDINAT (Posisi Z start/stop karakter) ---
+        const MAJIMA_START_Z = 330;
+        const MAJIMA_STOP_Z = 160;        
+        const KIRYU_STOP_Z = 130;         
+        
+        // Menghitung kecepatan (Speed) agar langkah kaki sinkron dengan jarak
+        const distMajima = Math.abs(MAJIMA_START_Z - MAJIMA_STOP_Z);
+        const SPEED = distMajima / MAJIMA_WALK_TIME; // Speed = Jarak / Waktu
+        const distKiryu = SPEED * KIRYU_WALK_TIME; 
+        const KIRYU_START_Z = KIRYU_STOP_Z - distKiryu; 
+
+        // --- GLOBAL VARIABLES (Deklarasi variabel agar bisa diakses di semua fungsi) ---
         let camera, scene, renderer, controls, composer;
-        let prevTime = performance.now();
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
-        const walkSpeed = 15.0, runSpeed = 40.0;
-        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
-        let moveUp = false, moveDown = false; 
+        let cityModel, bokehPass; 
+        let prevTime = performance.now(); // Untuk menghitung delta time
+
+        // [COLLISION FIX] --- VARIABEL RAYCASTER ---
+        const raycaster = new THREE.Raycaster(); // Alat deteksi tabrakan
+        let collisionMeshes = []; // Daftar tembok/gedung yang bisa ditabrak
+        const collisionDistance = 2.0; // Jarak minimal kamera ke tembok (buffer)
+        // ------------------------------------------
+        
+        // State input keyboard (WASD)
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        let moveUp = false;      
+        let moveDown = false;    
+        
+        // State Freecam
         let isFreeCam = false;
+        let freeCamSpeed = 40.0; // Kecepatan terbang kamera
 
-        // --- CUTSCENE VARIABLES (UPDATED) ---
-        const mixers = []; 
-        const clock = new THREE.Clock();
+        let isUiHidden = false;
+        let targetFOV = 60; // FOV default untuk freecam
         
-        // Kita menggunakan "Group" untuk menampung kedua versi (Idle & Walk)
+        const mixers = []; // Array untuk menyimpan semua AnimationMixer (agar bisa diupdate bareng)
+        const clock = new THREE.Clock(); 
+        
+        // --- VARIABLES PLAYBACK ---
+        let cutsceneTime = 0;       // Penanda waktu (timeline) saat ini
+        let isPlaying = false;      // Apakah cutscene sedang main?
+        let isPaused = false;       // Apakah sedang dipause?
+        let seekSpeed = 0;          // Nilai kecepatan rewind/fast-forward
+
+        let cameraTimeline;         // Variabel GSAP Timeline
+        const camTarget = new THREE.Vector3(0, 1.6, 0); // Titik fokus kamera
+        
+        // Parameter scene dinamis yang akan dianimasikan oleh GSAP
+        const sceneParams = { fov: 45, shake: 0, focus: 20, aperture: 0.0001 }; 
+
+        // Variabel Audio
+        let sound;
+        let audioLoader;
+        let loadingManager; 
+
+        // Grup untuk menampung mesh karakter
         let kiryuGroup, majimaGroup;
+        // Objek untuk menyimpan referensi mesh dan mixer karakter utama
+        let kiryuMeshes = { idleMesh: null, walkMesh: null, walkMixer: null };
+        let majimaMeshes = { idleMesh: null, walkMesh: null, walkMixer: null, idleAction: null }; 
         
-        // Object untuk menyimpan referensi mesh di dalam group
-        // Struktur: { idleMesh: Object3D, walkMesh: Object3D }
-        let kiryuMeshes = { idleMesh: null, walkMesh: null };
-        let majimaMeshes = { idleMesh: null, walkMesh: null };
-        
-        let cutsceneFinished = false; 
+        // Sistem Crowd / NPC
+        const npcLibrary = { walkers: [], idles: [] }; // Library aset NPC yang sudah diload
+        const activeWalkers = []; // Array NPC yang sedang aktif berjalan di scene
+        const maxWalkers = 40; // Batas maksimum NPC agar tidak lag
+        let spawnTimer = 0;
+        let nextSpawnThreshold = 0; 
+        let lastSpawnedIndex = -1;  
 
+        // Memulai Program
         init();
         animate();
 
         function init() {
-            // 1. SCENE
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020205); 
-            scene.fog = new THREE.FogExp2(0x020205, 0.002); 
+            // Setup Loading Manager (untuk loading bar)
+            loadingManager = new THREE.LoadingManager();
+            const loadingBar = document.getElementById('loading-bar');
+            const loadingText = document.getElementById('loading');
+            
+            // Update loading bar saat aset diload
+            loadingManager.onProgress = function(url, itemsLoaded, itemsTotal) {
+                const progress = (itemsLoaded / itemsTotal) * 100;
+                loadingBar.style.width = progress + '%';
+                if(itemsLoaded === itemsTotal) loadingText.innerHTML = "INITIALIZING GPU... PLEASE WAIT";
+            };
 
-            // 2. KAMERA
+            // Saat semua aset selesai diload
+            loadingManager.onLoad = function() {
+                console.log('All Assets Loaded');
+                // Animasi fade out loading screen
+                gsap.to("#loading", { opacity: 0, duration: 0.5, onComplete: () => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('instructions').style.display = 'block'; // Tampilkan instruksi
+                }});
+                initStaticNPCs(); // Spawn NPC yang diam
+            };
+
+            // Inisialisasi Scene Three.js
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1005); // Warna background gelap
+            
+            // [G1 - Transparency] FogExp2: Efek kabut eksponensial transparan
+            scene.fog = new THREE.FogExp2(0x1a1005, 0.0025); 
+
+            // Setup Kamera
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
             camera.position.set(0, 3, 30); 
-            camera.lookAt(0, 1, 0);
 
-<<<<<<< HEAD
-            // 3. LIGHTING
-            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 2.0);
+            // Setup Audio Listener & Loader
+            const listener = new THREE.AudioListener();
+            camera.add(listener);
+            sound = new THREE.Audio(listener);
+            audioLoader = new THREE.AudioLoader(loadingManager);
+            audioLoader.load('./theme.mp3', function(buffer) { // Load lagu tema
+                sound.setBuffer(buffer);
+                sound.setLoop(false);
+                sound.setVolume(0.8);
+            });
+
+            // --- LIGHTING SETUP (Pencahayaan) ---
+            
+            // [G2 - Ambient Light] HemisphereLight: Cahaya lingkungan (Langit vs Tanah)
+            const hemiLight = new THREE.HemisphereLight(0xffaa00, 0x221100, 1.0); 
             scene.add(hemiLight);
-            const dirLight = new THREE.DirectionalLight(0xffaa33, 1.0);
-            dirLight.position.set(10, 20, 10);
-            dirLight.castShadow = true; 
-            scene.add(dirLight);
-            const ambientLight = new THREE.AmbientLight(0xffccaa, 0.5); 
-            scene.add(ambientLight);
-=======
-            // 3. LIGHTING (REVISI: WARM STREET SETUP)
-
-            // 1. Hemisphere Light: Kunci agar jalanan tidak gelap gulita.
-            // Ini mensimulasikan cahaya langit (atas) dan pantulan tanah (bawah).
-            // Warna Langit: 0xffeeb1 (Kuning Hangat / Sore)
-            // Warna Tanah: 0x080820 (Biru Gelap / Aspal Malam)
-            // Intensitas: 2.0 (Cukup terang untuk menerangi jalanan)
-            const hemiLight = new THREE.HemisphereLight(0xffeeb1, 0x080820, 2.0);
-            scene.add(hemiLight);
-
-            // 2. Directional Light: Simulasi Matahari/Bulan (memberi arah bayangan & highlight warm)
-            // Warna: 0xffaa33 (Oranye Hangat)
-            const dirLight = new THREE.DirectionalLight(0xffaa33, 1.0);
-            dirLight.position.set(10, 20, 10); // Posisi cahaya dari atas serong
+            
+            // [G3 - Diffuse Light] DirectionalLight: Cahaya matahari utama (menghasilkan bayangan)
+            const dirLight = new THREE.DirectionalLight(0xffdd88, 2.5); 
+            dirLight.position.set(10, 30, 50); 
+            
+            // [E1 - Shadow] Mengaktifkan Cast Shadow (Bayangan)
+            dirLight.castShadow = true;
+            dirLight.shadow.bias = -0.001; // Bias untuk mencegah shadow acne
+            // [E2 - Shadow Map] Resolusi Shadow Map diperbesar (High Quality)
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
             scene.add(dirLight);
 
-            // 3. (Opsional) Ambient Light Tambahan: Untuk mencerahkan sudut-sudut yang masih hitam pekat
-            const ambientLight = new THREE.AmbientLight(0xffccaa, 0.5); // Warm lembut, intensitas rendah
+            // [G4 - Theme Lighting] Rim Light: Cahaya biru dari samping untuk efek sinematik
+            const rimLight = new THREE.DirectionalLight(0x00aaff, 1.5);
+            rimLight.position.set(-50, 10, -20);
+            scene.add(rimLight);
+
+            // Ambient Light tambahan untuk mengisi area gelap
+            const ambientLight = new THREE.AmbientLight(0xffaa44, 0.5); 
             scene.add(ambientLight);
 
-            // B. Directional Light 1 (Moonlight - Cool)
-            // Memberikan highlight biru di atap gedung (kontras dingin)
->>>>>>> 1eef5662909ec8c31ce893872306e5cd954f5801
-            const moonLight = new THREE.DirectionalLight(0xaaccff, 0.5); 
-            moonLight.position.set(-50, 100, -50);
-            scene.add(moonLight);
-            const streetFill = new THREE.DirectionalLight(0xffaa66, 0.5);
-            streetFill.position.set(50, 30, 50);
-            scene.add(streetFill);
-
-            // 4. RENDERER
-            renderer = new THREE.WebGLRenderer({ antialias: false });
+            // Setup Renderer WebGL
+            renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            
+            // [G5 - Theme Tone Mapping] Tone Mapping untuk warna realistis (HDR like)
             renderer.toneMapping = THREE.ReinhardToneMapping; 
-            renderer.toneMappingExposure = 1.1; 
+            renderer.toneMappingExposure = 1.3; 
+            
+            // Mengaktifkan Shadow Map di Renderer
             renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Tipe bayangan lembut
             document.body.appendChild(renderer.domElement);
 
-            // 5. POST-PROCESSING
+            // --- POST PROCESSING SETUP ---
             const renderScene = new RenderPass(scene, camera);
+            
+            // [G6 - Theme Bloom] UnrealBloomPass: Efek cahaya neon berpendar (Glow)
             const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            bloomPass.threshold = 0.8; 
-            bloomPass.strength = 0.7;  
-            bloomPass.radius = 0.4;
-            const outputPass = new OutputPass();
+            bloomPass.threshold = 0.6; bloomPass.strength = 0.8; bloomPass.radius = 0.5;
 
+            // Setup BokehPass (Depth of Field / Blur Kamera)
+            bokehPass = new BokehPass(scene, camera, {
+                focus: 20.0, aperture: 0.0001, maxblur: 0.015,
+                width: window.innerWidth, height: window.innerHeight
+            });
+
+            // Menggabungkan pass ke dalam Composer
             composer = new EffectComposer(renderer);
             composer.addPass(renderScene);
             composer.addPass(bloomPass);
-            composer.addPass(outputPass);
+            composer.addPass(bokehPass);
+            composer.addPass(new OutputPass()); // Output final ke layar
 
-            // 6. ASSET LOADING (ENVIRONMENT)
-            const loader = new GLTFLoader();
+            // [G7 - Environment] Loading Model Kota (Kamurocho.glb)
+            const loader = new GLTFLoader(loadingManager);
             loader.load('./Kamurocho.glb', function (gltf) {
                 const model = gltf.scene;
-                model.scale.set(0.03, 0.03, 0.03); 
-                model.traverse(function (child) {
-                    if (child.isMesh) {
-                        child.castShadow = true;    
-                        child.receiveShadow = true; 
-                        if (child.material.map) {
-                            if (!child.material.emissiveMap) child.material.emissiveMap = child.material.map;
-                            child.material.emissive = new THREE.Color(0xffffff);
-                            child.material.emissiveIntensity = 1.5; 
+                cityModel = model; 
+                model.scale.set(0.03, 0.03, 0.03); // Skala disesuaikan
+                model.traverse(c => { // Loop semua mesh dalam model kota
+                    if (c.isMesh) { 
+                        c.castShadow = true; c.receiveShadow = true; // Kota menerima bayangan
+                        
+                        // [COLLISION FIX] Daftarkan mesh ke array collision
+                        collisionMeshes.push(c); 
+                        // ------------------------------------------------
+
+                        // Hack material: ubah tekstur jadi emissive agar menyala
+                        if (c.material.map && !c.material.emissiveMap) {
+                             c.material.emissiveMap = c.material.map;
+                             c.material.emissive = new THREE.Color(0xffffff);
+                             c.material.emissiveIntensity = 1.5; 
                         }
-                        if (child.material) {
-                            child.material.roughness = 0.4; 
-                            child.material.metalness = 0.2; 
-                        }
-                    }
+                    } 
                 });
                 scene.add(model);
-                document.getElementById('loading').style.display = 'none';
             });
 
-            // 7. CHARACTER LOADING (NEW STRATEGY: GROUPS)
-            const forwardPoint = new THREE.Vector3(0, 0, 1000);
-
-            // Buat Group (Wadah Kosong) untuk masing-masing karakter
+            // Membuat Group kosong untuk Karakter Utama
             kiryuGroup = new THREE.Group();
-            kiryuGroup.position.set(0, 0, 50); // Posisi Awal Kiryu
-            kiryuGroup.lookAt(forwardPoint);    // Hadap Tengah
+            kiryuGroup.position.set(0, 0, KIRYU_START_Z); 
+            kiryuGroup.lookAt(0, 0, 1000); 
             scene.add(kiryuGroup);
 
             majimaGroup = new THREE.Group();
-            majimaGroup.position.set(0, 0, 330); // Posisi Awal Majima
-            majimaGroup.lookAt(0, 0, -1000);    // Hadap Tengah
+            majimaGroup.position.set(0, 0, MAJIMA_START_Z); 
+            majimaGroup.lookAt(0, 0, -1000); 
             scene.add(majimaGroup);
 
-            // Panggil Loader Spesial
-            loadCharacterDualVersion('./kiryu_idle.glb', './kiryu_walking.glb', kiryuGroup, true);
-            loadCharacterDualVersion('./majima_idle.glb', './majima_walking.glb', majimaGroup, false);
+            // Load Karakter (Panggil fungsi helper)
+            loadCharacterDualVersion(loader, './kiryu_idle.glb', './kiryu_walking.glb', kiryuGroup, true);
+            loadCharacterDualVersion(loader, './majima_idle.glb', './majima_walking.glb', majimaGroup, false);
 
-            // 8. CONTROLS
-            controls = new PointerLockControls(camera, document.body);
-            document.body.addEventListener('click', () => controls.lock());
+            // Load Sistem Crowd
+            loadCrowdSystem(loader);
             
-            const onKeyDown = (e) => {
-                switch (e.code) {
-                    case 'KeyW': moveForward = true; break;
-                    case 'KeyA': moveLeft = true; break;
-                    case 'KeyS': moveBackward = true; break;
-                    case 'KeyD': moveRight = true; break;
-                    case 'Space': moveUp = true; break;
-                    case 'ShiftLeft': moveDown = true; break; 
-                    case 'KeyF': isFreeCam = !isFreeCam; break;
+            // [E3 - Cinematography] Setup Timeline Kamera GSAP
+            setupCinematicShots();
+            
+            // --- CONTROLS SETUP (PointerLock) ---
+            controls = new PointerLockControls(camera, document.body);
+            controls.minPolarAngle = 0.01; 
+            controls.maxPolarAngle = Math.PI - 0.01;
+
+            // Klik layar untuk kunci kursor (hanya saat freecam)
+            document.body.addEventListener('click', () => { 
+                if(isFreeCam) controls.lock(); 
+            });
+
+            // Scroll mouse untuk ubah FOV saat freecam
+            document.addEventListener('wheel', (event) => {
+                if (isFreeCam) {
+                    targetFOV += event.deltaY * 0.05;
+                    targetFOV = Math.max(10, Math.min(100, targetFOV));
                 }
-            };
-            const onKeyUp = (e) => {
-                switch (e.code) {
-                    case 'KeyW': moveForward = false; break;
-                    case 'KeyA': moveLeft = false; break;
-                    case 'KeyS': moveBackward = false; break;
-                    case 'KeyD': moveRight = false; break;
-                    case 'Space': moveUp = false; break;
-                    case 'ShiftLeft': moveDown = false; break;
-                }
-            };
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
+            });
+
+            // Setup input keyboard
+            setupInputs();
+            
+            // Resize handler: sesuaikan ukuran jika window berubah
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
@@ -238,135 +389,694 @@
             });
         }
 
-        // --- SOLUSI FINAL: DUAL MESH LOADER ---
-        // Fungsi ini memuat DUA model sekaligus ke dalam satu Group.
-        function loadCharacterDualVersion(idleFile, walkingFile, targetGroup, isKiryu) {
-            const loader = new GLTFLoader();
+        // --- FUNGSI AUDIO SYNC ---
+        // Memastikan audio diputar dari detik yang tepat saat resume/seek
+        function syncAudioToTime() {
+            if(sound.isPlaying) {
+                sound.stop(); // Stop dulu biar gak tumpang tindih
+            }
 
-            // 1. LOAD MODEL WALKING (Ditampilkan Pertama)
+            // Jika belum selesai dan tidak pause
+            if (cutsceneTime < TOTAL_DURATION && !isPaused && seekSpeed === 0) {
+                sound.offset = Math.max(0, cutsceneTime); // Set offset audio
+                
+                if (sound.buffer) {
+                    sound.play(); // Play ulang
+                }
+            }
+        }
+
+        // --- FUNGSI INPUT KEYBOARD ---
+        function setupInputs() {
+            const statusInd = document.getElementById('status-indicator');
+
+            // Update teks status di pojok kiri atas
+            const updateStatus = () => {
+                if (isFreeCam) {
+                    statusInd.innerText = "FREECAM MODE (WASD + MOUSE)";
+                    statusInd.style.opacity = 1;
+                } else if (isPaused) {
+                    statusInd.innerText = "PAUSED";
+                    statusInd.style.opacity = 1;
+                } else if (seekSpeed < 0) {
+                    statusInd.innerText = "<< REWIND";
+                    statusInd.style.opacity = 1;
+                } else if (seekSpeed > 0) {
+                    statusInd.innerText = "FAST FORWARD >>";
+                    statusInd.style.opacity = 1;
+                } else {
+                    statusInd.style.opacity = 0;
+                }
+            };
+
+            // Event Listener Tombol Tekan (KeyDown)
+            const onKeyDown = (e) => {
+                if (e.repeat) return; // Cegah spam tombol
+
+                switch (e.code) {
+                    case 'KeyF': // F: Toggle Freecam
+                        isFreeCam = !isFreeCam;
+                        if (isFreeCam) {
+                            controls.lock();
+                            bokehPass.enabled = false; // Matikan blur saat freecam
+                            camera.up.set(0, 1, 0); 
+                            if(sound.isPlaying) sound.stop(); // Stop audio di freecam
+                        } else {
+                            controls.unlock();
+                            bokehPass.enabled = true; 
+                            if (cameraTimeline) {
+                                cameraTimeline.seek(cutsceneTime); // Balik ke posisi cutscene
+                                camera.lookAt(camTarget);
+                            }
+                            syncAudioToTime();
+                        }
+                        updateStatus();
+                        break;
+
+                    case 'KeyP': // P: Play / Restart
+                        if(!isFreeCam) {
+                            resetCutscene(); 
+                            isPlaying = true;
+                            document.getElementById('instructions').style.display = 'none';
+                        }
+                        break;
+                    
+                    case 'Space': // SPASI: Pause / Naik (Freecam)
+                        if (isFreeCam) {
+                            moveUp = true; 
+                        } else if (isPlaying) {
+                            isPaused = !isPaused; 
+                            if (isPaused) {
+                                if (sound.isPlaying) sound.stop(); 
+                            } else {
+                                syncAudioToTime(); 
+                            }
+                            updateStatus();
+                        }
+                        break;
+                    
+                    case 'ArrowLeft': // KIRI: Rewind
+                        if (isPlaying && !isFreeCam) {
+                            seekSpeed = -5.0; 
+                            if(sound.isPlaying) sound.stop(); 
+                            updateStatus();
+                        }
+                        break;
+                    case 'ArrowRight': // KANAN: Fast Forward
+                        if (isPlaying && !isFreeCam) {
+                            seekSpeed = 8.0; 
+                            if(sound.isPlaying) sound.stop(); 
+                            updateStatus();
+                        }
+                        break;
+                    
+                    case 'KeyH': // H: Hide UI
+                        isUiHidden = !isUiHidden;
+                        const uiElements = document.querySelectorAll('.ui-element');
+                        uiElements.forEach(el => {
+                            if(el.id === 'instructions' && isPlaying) return; 
+                            el.style.opacity = isUiHidden ? 0 : 1;
+                        });
+                        break;
+                        
+                    // Kontrol WASD Freecam
+                    case 'KeyW': moveForward = true; break;
+                    case 'KeyA': moveLeft = true; break;
+                    case 'KeyS': moveBackward = true; break;
+                    case 'KeyD': moveRight = true; break;
+                    case 'ShiftLeft': moveDown = true; break; 
+                }
+            };
+
+            // Event Listener Tombol Lepas (KeyUp)
+            const onKeyUp = (e) => {
+                switch (e.code) {
+                    case 'ArrowLeft': 
+                    case 'ArrowRight': 
+                        if (isPlaying) {
+                            seekSpeed = 0; // Stop seeking
+                            if (!isPaused) syncAudioToTime(); // Play audio lagi
+                            updateStatus();
+                        }
+                        break;
+                    case 'KeyW': moveForward = false; break;
+                    case 'KeyA': moveLeft = false; break;
+                    case 'KeyS': moveBackward = false; break;
+                    case 'KeyD': moveRight = false; break;
+                    case 'ShiftLeft': moveDown = false; break;
+                    case 'Space': moveUp = false; break;
+                }
+            };
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+        }
+
+        // Fungsi Reset Cutscene ke awal (Detik 0)
+        function resetCutscene() {
+            cutsceneTime = 0;
+            isPaused = false;
+            seekSpeed = 0;
+            isFreeCam = false;
+            bokehPass.enabled = true;
+            controls.unlock(); 
+            
+            syncAudioToTime();
+            
+            if (cameraTimeline) cameraTimeline.restart();
+            
+            // Reset transparansi elemen ending
+            gsap.set("#black-screen", { opacity: 0 });
+            gsap.set("#end-text", { opacity: 0 });
+            gsap.set("#copyright", { opacity: 0 });
+            document.getElementById('status-indicator').style.opacity = 0;
+
+            // Reset animasi Majima
+            if(majimaMeshes.idleAction) {
+                majimaMeshes.idleAction.paused = true;
+                majimaMeshes.idleAction.time = 0; 
+            }
+        }
+
+        // [COLLISION FIX] --- FUNGSI UPDATE FREECAM BARU ---
+        function updateFreeCam(delta) {
+            // 1. Update FOV (Zoom)
+            camera.fov += (targetFOV - camera.fov) * 0.1;
+            camera.updateProjectionMatrix();
+
+            const actualSpeed = freeCamSpeed * delta;
+
+            // 2. Hitung Arah Gerakan (Velocity Vector)
+            const forwardDir = new THREE.Vector3();
+            camera.getWorldDirection(forwardDir); // Ambil arah depan kamera
+            
+            const rightDir = new THREE.Vector3();
+            rightDir.crossVectors(forwardDir, camera.up).normalize(); // Ambil arah kanan kamera
+            
+            const upAxis = new THREE.Vector3(0, 1, 0);
+
+            // Vector penampung total gerakan yang diinginkan
+            const moveVector = new THREE.Vector3(0, 0, 0);
+
+            // Gabungkan input keyboard ke dalam moveVector
+            if (moveForward) moveVector.add(forwardDir);
+            if (moveBackward) moveVector.sub(forwardDir);
+            if (moveRight) moveVector.add(rightDir);
+            if (moveLeft) moveVector.sub(rightDir);
+            if (moveUp) moveVector.add(upAxis);
+            if (moveDown) moveVector.sub(upAxis);
+
+            // Jika tidak ada input, keluar dari fungsi
+            if (moveVector.lengthSq() === 0) return;
+
+            // Normalize agar kecepatan konsisten (diagonal tidak lebih cepat)
+            moveVector.normalize();
+
+            // 3. LOGIKA RAYCASTING (COLLISION)
+            // Tembakkan sinar dari posisi kamera ke arah gerakan
+            raycaster.set(camera.position, moveVector);
+
+            // Cek tabrakan dengan gedung kota
+            // Kita cek sejauh (actualSpeed + collisionDistance) agar berhenti sebelum menempel tembok
+            const intersects = raycaster.intersectObjects(collisionMeshes, false);
+
+            // Jika ada tabrakan dalam jarak dekat
+            if (intersects.length > 0 && intersects[0].distance < (actualSpeed + collisionDistance)) {
+                // Tabrakan terdeteksi! Jangan gerakkan kamera (stop)
+                return; 
+            }
+
+            // 4. Jika aman, terapkan gerakan
+            camera.position.add(moveVector.multiplyScalar(actualSpeed));
+        }
+
+        // [E3 - Cinematography] FUNGSI UTAMA TIMELINE KAMERA
+        function setupCinematicShots() {
+            // Membuat GSAP Timeline yang dipause (akan di-seek manual di animate)
+            cameraTimeline = gsap.timeline({ paused: true });
+
+            // Fungsi helper untuk update parameter kamera di setiap frame
+            const onUpdateParams = () => {
+                // [A3 - Zoom In/Out] Update nilai FOV
+                camera.fov = sceneParams.fov;
+                camera.updateProjectionMatrix();
+                // Update parameter efek Bokeh/Blur
+                if(bokehPass) {
+                    bokehPass.uniforms['focus'].value = sceneParams.focus;
+                    bokehPass.uniforms['aperture'].value = sceneParams.aperture;
+                }
+            };
+
+            // Kalkulasi posisi referensi berdasarkan kecepatan jalan
+            const majimaPosAt6 = MAJIMA_START_Z - (SPEED * 6);
+            const majimaPosAt12 = MAJIMA_START_Z - (SPEED * 12);
+            const kiryuWalkTimeStart = 17 - (MAJIMA_WALK_TIME + KIRYU_DELAY_TIME);
+            const kiryuPosAt17 = KIRYU_START_Z + (SPEED * kiryuWalkTimeStart);
+            const kiryuPosAt23 = KIRYU_START_Z + (SPEED * (23 - (MAJIMA_WALK_TIME + KIRYU_DELAY_TIME)));
+
+            // Set parameter awal
+            cameraTimeline.set(sceneParams, { fov: 28, focus: 50, aperture: 0.0004 }, 0);
+            const startAngle = 0; 
+            const endAngle = 90 * (Math.PI / 180); 
+            const camState = { angle: startAngle };
+            
+            // [SCENE 1] ORBIT CAMERA (Majima Jalan)
+            // [E4 - Orbit Rotate] Rumus Matematika Sin/Cos untuk rotasi
+            cameraTimeline.to(camState, {
+                angle: endAngle, duration: 6, ease: "sine.inOut",
+                onUpdate: () => {
+                    const progress = cameraTimeline.time() / 6.0; 
+                    const currentMajimaZ = MAJIMA_START_Z - ((MAJIMA_START_Z - majimaPosAt6) * progress);
+                    
+                    // Rumus Lingkaran: x = r*sin(a), z = center - r*cos(a)
+                    camera.position.x = 50 * Math.sin(camState.angle);
+                    camera.position.z = currentMajimaZ - (50 * Math.cos(camState.angle));
+                    camera.position.y = 33.8; 
+                    camTarget.set(0, 33.0, currentMajimaZ); // Kamera selalu lihat target
+                    camera.lookAt(camTarget);
+                    onUpdateParams();
+                }
+            }, 0);
+
+            // [SCENE 2] TRACKING SHOT (Depan Majima)
+            cameraTimeline.set(sceneParams, { fov: 50, focus: 45, aperture: 0.0001, onUpdate: onUpdateParams }, 6);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 14.0, z: majimaPosAt6 - 45 }, { x: 0, y: 14.0, z: majimaPosAt12 - 45, duration: 6, ease: "none" }, 6);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 17.0, z: majimaPosAt6 }, { x: 0, y: 17.0, z: majimaPosAt12, duration: 6, ease: "none" }, 6);
+
+            // [SCENE 3] WIDE SHOT (Majima Berhenti)
+            cameraTimeline.set(sceneParams, { fov: 40, focus: 15, onUpdate: onUpdateParams }, 12);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 32.5, z: majimaPosAt12 - 15 }, { x: 0, y: 32.5, z: MAJIMA_STOP_Z - 12, duration: 1.5, ease: "power2.out" }, 12);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 32.5, z: majimaPosAt12 }, { x: 0, y: 32.5, z: MAJIMA_STOP_Z, duration: 1.5, ease: "power2.out" }, 12);
+
+            // [SCENE 4] LOW ANGLE (Sepatu)
+            cameraTimeline.set(sceneParams, { fov: 50, focus: 40, onUpdate: onUpdateParams }, 13.5);
+            cameraTimeline.set(camera.position, { x: 5, y: 20.0, z: 145 }, 13.5); 
+            cameraTimeline.set(camTarget, { x: 0, y: 17.0, z: KIRYU_START_Z }, 13.5); 
+            cameraTimeline.to(camera.position, { x: 4, z: 142, duration: 2, ease: "linear" }, 13.5);
+
+            // [SCENE 5] CLOSE UP MAJIMA (SHAKE)
+            // [A4 - Rotate Tilt] Efek Camera Shake
+            cameraTimeline.set(sceneParams, { fov: 50, focus: 8, onUpdate: onUpdateParams }, 15.5);
+            cameraTimeline.set(camera.position, { x: 0, y: 33.5, z: MAJIMA_STOP_Z - 8 }, 15.5); 
+            cameraTimeline.set(camTarget, { x: 0, y: 33.5, z: MAJIMA_STOP_Z }, 15.5);
+            cameraTimeline.to(sceneParams, { shake: 0.05, duration: 0.1, onUpdate: onUpdateParams }, 15.5);
+            cameraTimeline.to(sceneParams, { shake: 0.0, duration: 1.0, onUpdate: onUpdateParams }, 16.0);
+
+            // [SCENE 6] TRACKING SHOT (Kiryu dari Belakang)
+            cameraTimeline.set(sceneParams, { fov: 60, focus: 30, onUpdate: onUpdateParams }, 17);
+            cameraTimeline.fromTo(camera.position, 
+                { x: 7.0, y: 17.0, z: kiryuPosAt17 + 30 }, 
+                { x: 7.0, y: 17.0, z: kiryuPosAt23 + 30, duration: 6, ease: "none" }, 
+                17
+            );
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 17.0, z: kiryuPosAt17 }, { x: 0, y: 17.0, z: kiryuPosAt23, duration: 6, ease: "none" }, 17);
+
+            // [SCENE 7] MEDIUM SHOT (Kiryu Punggung)
+            cameraTimeline.set(sceneParams, { fov: 50, focus: 15, onUpdate: onUpdateParams }, 23);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 33.5, z: KIRYU_STOP_Z + 8 }, { x: 0, y: 33.5, z: KIRYU_STOP_Z + 12, duration: 5, ease: "power1.out" }, 23);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 33.5, z: KIRYU_STOP_Z }, { x: 0, y: 33.5, z: KIRYU_STOP_Z, duration: 5 }, 23);
+            cameraTimeline.to(sceneParams, { shake: 0.05, duration: 0.1, onUpdate: onUpdateParams }, 23);
+            cameraTimeline.to(sceneParams, { shake: 0.0, duration: 0.5, onUpdate: onUpdateParams }, 27.5);
+
+            // [SCENE 8] SIDE PROFILE (Jarak Berdua)
+            cameraTimeline.set(sceneParams, { fov: 50, focus: 30, onUpdate: onUpdateParams }, 28);
+            cameraTimeline.fromTo(camera.position, { x: 12, y: 28.0, z: KIRYU_STOP_Z - 20 }, { x: 10, y: 28.0, z: KIRYU_STOP_Z - 15, duration: 5, ease: "none" }, 28);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 33.5, z: MAJIMA_STOP_Z }, { x: 0, y: 33.5, z: MAJIMA_STOP_Z, duration: 5 }, 28);
+
+            // [SCENE 9] OVER THE SHOULDER (Bahu Majima)
+            cameraTimeline.fromTo(camera.position, { x: -12, y: 20.0, z: MAJIMA_STOP_Z + 20 }, { x: -12, y: 32.0, z: MAJIMA_STOP_Z + 20, duration: 5, ease: "power1.inOut" }, 33);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 33.5, z: KIRYU_STOP_Z }, { x: 0, y: 33.5, z: KIRYU_STOP_Z, duration: 5 }, 33);
+
+            // [SCENE 10] CLOSE UP MAJIMA
+            cameraTimeline.set(sceneParams, { fov: 40, focus: 15, onUpdate: onUpdateParams }, 38);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 33.5, z: 148 }, { x: 0, y: 33.5, z: 152, duration: 3, ease: "none" }, 38);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 33.5, z: MAJIMA_STOP_Z }, { x: 0, y: 33.5, z: MAJIMA_STOP_Z, duration: 3 }, 38);
+            cameraTimeline.to(sceneParams, { shake: 0.04, duration: 0.1, onUpdate: onUpdateParams }, 38);
+
+            // [SCENE 11] CLOSE UP KIRYU
+            cameraTimeline.set(sceneParams, { fov: 40, focus: 15, onUpdate: onUpdateParams }, 41);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 33.5, z: 142 }, { x: 0, y: 33.5, z: 138, duration: 6, ease: "none" }, 41);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 33.5, z: KIRYU_STOP_Z }, { x: 0, y: 33.5, z: KIRYU_STOP_Z, duration: 6 }, 41);
+            cameraTimeline.to(sceneParams, { shake: 0.03, duration: 0.1, onUpdate: onUpdateParams }, 41);
+
+            // [SCENE 12] MEDIUM SHOT (Majima Bicara)
+            cameraTimeline.set(sceneParams, { fov: 30, focus: 20, aperture: 0.0003, onUpdate: onUpdateParams }, 47);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 32.5, z: 140 }, { x: 0, y: 32.5, z: 142, duration: 5, ease: "none" }, 47);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 31.5, z: MAJIMA_STOP_Z }, { x: 0, y: 31.5, z: MAJIMA_STOP_Z, duration: 5 }, 47);
+            cameraTimeline.to(sceneParams, { shake: 0.05, duration: 0.1, onUpdate: onUpdateParams }, 47);
+
+            // [SCENE 13] DRONE SHOT (Pull Back ke Langit)
+            cameraTimeline.set(sceneParams, { fov: 28, aperture: 0.00025, focus: 35, onUpdate: onUpdateParams }, 52);
+            cameraTimeline.to(sceneParams, { focus: 75, duration: 5, ease: "none", onUpdate: onUpdateParams }, 52);
+            cameraTimeline.fromTo(camera.position, { x: 0, y: 32.5, z: 110 }, { x: 5, y: 50, z: 70, duration: 5, ease: "none" }, 52);
+            cameraTimeline.fromTo(camTarget, { x: 0, y: 31.5, z: KIRYU_STOP_Z }, { x: 0, y: 31.5, z: KIRYU_STOP_Z, duration: 5 }, 52);
+            cameraTimeline.to(sceneParams, { shake: 0.03, duration: 0.1, onUpdate: onUpdateParams }, 52);
+
+            // [SCENE 14] ENDING (Fade Out)
+            // [G8 - Transparency UI] Animasi opasitas layer hitam
+            cameraTimeline.to("#black-screen", { opacity: 1, duration: 2, ease: "power1.in" }, 57);
+            cameraTimeline.to("#end-text", { opacity: 1, duration: 2, ease: "power1.in" }, 59);
+            cameraTimeline.to("#copyright", { opacity: 1, duration: 2, ease: "power1.in" }, 59);
+        }
+
+        // Fungsi Load Karakter: Memuat file terpisah (Idle & Walking) dan menggabungkannya
+        function loadCharacterDualVersion(loader, idleFile, walkingFile, targetGroup, isKiryu) {
+            // Load file Animasi Berjalan
             loader.load(walkingFile, function (gltf) {
                 const model = gltf.scene;
-                model.scale.set(20.5, 20.5, 20.5); // Sesuaikan ukuran
-                model.traverse(c => { if(c.isMesh) c.castShadow = true; });
-                
-                // Masukkan ke dalam Group (bukan Scene langsung)
+                model.scale.set(19.5, 19.5, 19.5); 
+                model.traverse(c => { if(c.isMesh) c.castShadow = true; }); // Karakter menghasilkan bayangan
                 targetGroup.add(model);
                 
-                // Simpan referensi
-                if (isKiryu) kiryuMeshes.walkMesh = model;
-                else majimaMeshes.walkMesh = model;
-
-                // Setup Animasi
-                const mixer = new THREE.AnimationMixer(model);
-                mixers.push(mixer);
-                const action = mixer.clipAction(gltf.animations[0]);
-                action.play();
+                // Simpan referensi mesh ke objek global
+                if (isKiryu) kiryuMeshes.walkMesh = model; else majimaMeshes.walkMesh = model;
+                
+                // Setup Animation Mixer
+                const mixer = new THREE.AnimationMixer(model); mixers.push(mixer);
+                const action = mixer.clipAction(gltf.animations[0]); action.play();
+                
+                if(isKiryu) kiryuMeshes.walkMixer = mixer; else majimaMeshes.walkMixer = mixer;
             });
-
-            // 2. LOAD MODEL IDLE (Disembunyikan Pertama)
+            
+            // Load file Animasi Diam (Idle)
             loader.load(idleFile, function (gltf) {
                 const model = gltf.scene;
-                model.scale.set(20.5, 20.5, 20.5);
+                model.scale.set(19.5, 19.5, 19.5);
                 model.traverse(c => { if(c.isMesh) c.castShadow = true; });
-                
-                // Sembunyikan dulu!
-                model.visible = false;
-
-                // Masukkan ke dalam Group yang sama
+                model.visible = false; // Sembunyikan dulu (defaultnya walking)
                 targetGroup.add(model);
-
-                // Simpan referensi
-                if (isKiryu) kiryuMeshes.idleMesh = model;
-                else majimaMeshes.idleMesh = model;
-
-                // Setup Animasi
-                const mixer = new THREE.AnimationMixer(model);
-                mixers.push(mixer);
-                const action = mixer.clipAction(gltf.animations[0]);
+                
+                if (isKiryu) kiryuMeshes.idleMesh = model; else majimaMeshes.idleMesh = model;
+                const mixer = new THREE.AnimationMixer(model); mixers.push(mixer);
+                
+                const action = mixer.clipAction(gltf.animations[0]); 
                 action.play();
+                
+                // Khusus Majima: setup kontrol animasi bicara
+                if (!isKiryu) {
+                    majimaMeshes.idleAction = action;
+                    majimaMeshes.idleAction.paused = true; 
+                    majimaMeshes.idleAction.time = 0;
+                }
             });
         }
 
+        // Memuat daftar model NPC ke memori
+        function loadCrowdSystem(loader) {
+            const assetList = [
+                // Daftar file .glb NPC beserta tipe dan skalanya
+                { file: './ichiban walking.glb', type: 'walker', scale: 20.5 },
+                { file: './saeko walking.glb',   type: 'walker', scale: 20.5 },
+                { file: './mine walking.glb',    type: 'walker', scale: 20.5 },
+                { file: './kuwana walking.glb',  type: 'walker', scale: 20.5 },
+                { file: './higashi walking.glb', type: 'walker', scale: 20.5 },
+                { file: './daigo walking.glb',   type: 'walker', scale: 20.5 },
+                { file: './chitose walking.glb', type: 'walker', scale: 20.5 },
+                { file: './businessman rigged walking.glb',     type: 'walker', scale: 20.5 },
+                { file: './businessman game ready walking.glb', type: 'walker', scale: 20.5 },
+                { file: './govinda walking.glb', type: 'walker', scale: 20.5 },
+                { file: './saeko idle.glb',      type: 'idle', scale: 20.5 },
+                { file: './mine idle.glb',       type: 'idle', scale: 20.5 },
+                { file: './ichiban idle.glb',    type: 'idle', scale: 20.5 },
+                { file: './kuwana idle.glb',     type: 'idle', scale: 20.5 },
+                { file: './higashi idle.glb',    type: 'idle', scale: 20.5 },
+                { file: './hobo sitting idle.glb', type: 'idle', scale: 20.5 },
+                { file: './daigo idle.glb',      type: 'idle', scale: 20.5 },
+                { file: './chitose idle.glb',    type: 'idle', scale: 20.5 },
+                { file: './businessman rigged idle.glb',     type: 'idle', scale: 20.5 },
+                { file: './businessman game ready idle.glb', type: 'idle', scale: 20.5 },
+            ];
+            
+            assetList.forEach(asset => {
+                loader.load(asset.file, (gltf) => {
+                    const model = gltf.scene;
+                    model.userData.definedScale = asset.scale; 
+                    model.userData.animations = gltf.animations; 
+                    model.traverse(c => { if(c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+                    // Pisahkan ke array library yang sesuai
+                    if (asset.type === 'walker') npcLibrary.walkers.push(model); 
+                    else npcLibrary.idles.push(model);
+                });
+            });
+        }
+        
+        // Spawn NPC diam di lokasi tertentu
+        function initStaticNPCs() {
+             const idleSpots = [
+                // Koordinat x, z, rotasi, dan indeks aset
+                { x: -50, z: 285, rot: Math.PI / 4, assetIdx: 5 }, { x: 60, z: 60, rot: -Math.PI/2, assetIdx: 2 },
+                { x: 63, z: 335, rot: Math.PI/2, assetIdx: 4 }, { x: -80, z: 400, rot: Math.PI/-2, assetIdx: 6 },
+                { x: 60, z: 280, rot: -130 * (Math.PI / 180), assetIdx: 3 }, { x: 70, z: 170, rot: Math.PI/2, assetIdx: 7 },
+                { x: -70, z: 50, rot: -Math.PI/2, assetIdx: 9 },
+            ];
+            idleSpots.forEach((spot) => {
+                const template = npcLibrary.idles[spot.assetIdx]; 
+                if (template) {
+                    const clone = SkeletonUtils.clone(template); // Clone agar unik
+                    clone.position.set(spot.x, 0, spot.z); clone.rotation.y = spot.rot;
+                    const s = template.userData.definedScale; clone.scale.set(s, s, s); scene.add(clone);
+                    // Play animasi idle
+                    if (template.userData.animations.length > 0) {
+                        const mixer = new THREE.AnimationMixer(clone); mixers.push(mixer);
+                        mixer.clipAction(template.userData.animations[0]).play(); mixer.update(Math.random() * 5); 
+                    }
+                }
+            });
+        }
+        
+        // Spawn NPC berjalan secara acak
+        function spawnOneWalker() {
+            if (npcLibrary.walkers.length === 0) return;
+            
+            // Pilih NPC acak (hindari duplikat beruntun)
+            let randIdx;
+            do {
+                randIdx = Math.floor(Math.random() * npcLibrary.walkers.length);
+            } while (randIdx === lastSpawnedIndex && npcLibrary.walkers.length > 1);
+            
+            lastSpawnedIndex = randIdx; 
+            const template = npcLibrary.walkers[randIdx];
+
+            const clone = SkeletonUtils.clone(template);
+            
+            const isCrossStreet = Math.random() < 0.6; // Peluang spawn di penyeberangan
+            let moveDir, axis, laneName, rot, endLimit;
+            
+            if (isCrossStreet) {
+                // Setup jalur X (Cross Street)
+                axis = 'x'; laneName = 'cross_street'; const isGoingRight = Math.random() > 0.5;
+                const startX = isGoingRight ? -130 : 130; endLimit = isGoingRight ? 130 : -130;      
+                moveDir = isGoingRight ? 1 : -1; rot = isGoingRight ? (Math.PI / 2) : (-Math.PI / 2);
+                const laneOffset = isGoingRight ? -28.0 : -32.0;
+                clone.position.set(startX, 0, laneOffset + (Math.random()*2.5 - 1.25));
+            } else {
+                // Setup jalur Z (Trotoar Utama)
+                axis = 'z'; const isLeftLane = Math.random() > 0.5;
+                const laneCenter = isLeftLane ? -24 : 24; const spread = 6.0; 
+                const finalX = laneCenter + (Math.random() * spread - (spread/2)); 
+                const startZ = isLeftLane ? -100 : 450; const endZ = isLeftLane ? 450 : -100;
+                rot = (startZ < endZ) ? 0 : Math.PI; endLimit = endZ; moveDir = (startZ < endZ) ? 1 : -1;
+                laneName = isLeftLane ? 'left_main' : 'right_main';
+                clone.position.set(finalX, 0, startZ);
+            }
+            clone.rotation.y = rot; const s = template.userData.definedScale; clone.scale.set(s, s, s); scene.add(clone);
+            
+            let mixer = null;
+            if (template.userData.animations.length > 0) {
+                mixer = new THREE.AnimationMixer(clone); mixers.push(mixer);
+                mixer.clipAction(template.userData.animations[0]).play();
+            }
+            
+            // Simpan data NPC aktif ke array
+            const randomizedSpeed = 1.0 + Math.random() * 0.5; 
+            activeWalkers.push({ 
+                mesh: clone, 
+                mixer: mixer, 
+                baseSpeed: randomizedSpeed, 
+                currentSpeed: randomizedSpeed, 
+                direction: moveDir, limit: endLimit, lane: laneName, axis: axis 
+            });
+        }
+
+        // Hapus NPC dari memori saat keluar batas
+        function removeNPC(index) {
+            const npc = activeWalkers[index]; scene.remove(npc.mesh);
+            const mixerIdx = mixers.indexOf(npc.mixer); if (mixerIdx > -1) mixers.splice(mixerIdx, 1);
+            activeWalkers.splice(index, 1);
+        }
+
+        // Update logika pergerakan NPC setiap frame
+        function updateCrowd(delta) {
+             for (let i = activeWalkers.length - 1; i >= 0; i--) {
+                const npc = activeWalkers[i]; 
+                let shouldMove = true; 
+                let slowdownFactor = 1.0;
+
+                // [A2 - Collision] Cek jarak dengan NPC lain
+                for (let k = 0; k < activeWalkers.length; k++) {
+                    if (i === k) continue; 
+                    const other = activeWalkers[k];
+                    const dist = npc.mesh.position.distanceTo(other.mesh.position);
+
+                    if (npc.axis === 'x') {
+                        // [A1 - Move Logic] Logika arah X
+                        const forwardDir = new THREE.Vector3(npc.direction, 0, 0); 
+                        const dirToOther = new THREE.Vector3().subVectors(other.mesh.position, npc.mesh.position).normalize();
+                        const dot = forwardDir.dot(dirToOther); // Dot product untuk cek arah depan
+
+                        // Jika ada orang di depan (< 12 unit), berhenti
+                        if (dot > 0.5 && dist < 12.0) { 
+                            shouldMove = false; 
+                            slowdownFactor = 0.0;
+                        }
+                    }
+                    else if (npc.axis === 'z' && other.axis === 'z' && npc.lane === other.lane) {
+                        // [A1 - Move Logic] Logika arah Z
+                        const forwardDir = new THREE.Vector3(0, 0, npc.direction);
+                        const dirToOther = new THREE.Vector3().subVectors(other.mesh.position, npc.mesh.position).normalize();
+                        const dot = forwardDir.dot(dirToOther);
+
+                        if (dot > 0.5 && dist < 15.0) { 
+                            slowdownFactor = 0.0;
+                        }
+                    }
+                }
+
+                // Smooth acceleration/deceleration
+                let targetSpeed = shouldMove ? (npc.baseSpeed * slowdownFactor) : 0;
+                npc.currentSpeed += (targetSpeed - npc.currentSpeed) * 0.1;
+                
+                // Sinkronisasi animasi kaki dengan kecepatan gerak
+                if (npc.mixer) npc.mixer.timeScale = (npc.currentSpeed > 0.1) ? (npc.currentSpeed / 1.3) : 0; 
+                
+                // Update posisi mesh
+                if (npc.axis === 'x') {
+                    npc.mesh.position.x += npc.currentSpeed * npc.direction * delta * 20.0;
+                    if (Math.abs(npc.mesh.position.x) > 140) removeNPC(i);
+                } else {
+                    npc.mesh.position.z += npc.currentSpeed * npc.direction * delta * 20.0;
+                    if (npc.mesh.position.z < -120 || npc.mesh.position.z > 470) removeNPC(i);
+                }
+            }
+        }
+
+        // --- GAME LOOP UTAMA (ANIMATE) ---
         function animate() {
-            requestAnimationFrame(animate);
+            requestAnimationFrame(animate); // Loop rekursif
             
-            const time = performance.now();
-            const deltaControl = (time - prevTime) / 1000;
-            const deltaMixer = clock.getDelta();
+            const realTime = performance.now(); const deltaReal = (realTime - prevTime) / 1000; 
+            const deltaClock = clock.getDelta(); // Waktu antar frame
 
-            // UPDATE SEMUA ANIMASI (Baik yang visible maupun hidden tetap di-update agar sync)
-            mixers.forEach(mixer => mixer.update(deltaMixer));
+            if (isPlaying) {
+                // Update waktu cutscene
+                if (seekSpeed !== 0) {
+                    cutsceneTime += deltaClock * seekSpeed; // Fast forward/rewind
+                } else if (!isPaused) {
+                    cutsceneTime += deltaClock; // Play normal
+                }
+                
+                // Clamp waktu agar tidak keluar batas
+                if (cutsceneTime < 0) cutsceneTime = 0;
+                if (cutsceneTime > TOTAL_DURATION) cutsceneTime = TOTAL_DURATION;
+            }
 
-            // --- CUTSCENE LOGIC (GROUP MOVEMENT) ---
-            if (kiryuGroup && majimaGroup && !cutsceneFinished) {
-                // Pastikan mesh sudah terload sebelum mulai gerak
-                if (kiryuMeshes.walkMesh && majimaMeshes.walkMesh) {
+            // Update Animation Mixers (Pause jika user pause)
+            let mixerDelta = deltaClock;
+            if (isPaused && seekSpeed === 0) mixerDelta = 0; 
+            if (seekSpeed !== 0) mixerDelta = 0; 
+            
+            mixers.forEach(mixer => mixer.update(mixerDelta));
+
+            if (isFreeCam) {
+                updateFreeCam(deltaReal); // Update kamera manual
+            } else {
+                camera.rotation.set(0, 0, 0); 
+                camera.up.set(0, 1, 0);
+
+                if (isPlaying && cameraTimeline) {
+                    // Update Timeline Kamera sesuai waktu cutscene
+                    cameraTimeline.seek(cutsceneTime);
+                    camera.lookAt(camTarget);
                     
-                    const moveSpeed = 3.5 * deltaMixer;
-                    const stopDistance = 60.0;
-
-                    // Hitung jarak antar Group
-                    const distance = kiryuGroup.position.distanceTo(majimaGroup.position);
-
-                    if (distance > stopDistance) {
-                        // --- FASE JALAN ---
-                        // Gerakkan GROUP-nya, bukan mesh-nya
-                        kiryuGroup.translateZ(moveSpeed);
-                        majimaGroup.translateZ(moveSpeed);
-                        
-                    } else {
-                        // --- FASE BERHENTI (SWAP VISIBILITY) ---
-                        cutsceneFinished = true;
-                        console.log("Cutscene: Switching to Idle Mode");
-            
-                        const offsetCorrection = -5; // <--- COBA UBAH ANGKA INI
-
-                        // SWAP KIRYU
-                        if (kiryuMeshes.walkMesh && kiryuMeshes.idleMesh) {
-                            kiryuMeshes.walkMesh.visible = false;
-                            
-                            // Terapkan koreksi posisi mundur pada model Idle
-                            kiryuMeshes.idleMesh.position.z = offsetCorrection; 
-                            
-                            kiryuMeshes.idleMesh.visible = true;
-                        }
-
-                        // SWAP MAJIMA
-                        if (majimaMeshes.walkMesh && majimaMeshes.idleMesh) {
-                            majimaMeshes.walkMesh.visible = false;
-                            
-                            // Terapkan koreksi posisi mundur pada model Idle
-                            majimaMeshes.idleMesh.position.z = offsetCorrection;
-                            
-                            majimaMeshes.idleMesh.visible = true;
-                        }
+                    // Tambahkan shake manual ke posisi kamera
+                    if(sceneParams.shake > 0) {
+                         camera.position.x += (Math.random() - 0.5) * sceneParams.shake;
+                         camera.position.y += (Math.random() - 0.5) * sceneParams.shake;
+                         camera.position.z += (Math.random() - 0.5) * sceneParams.shake;
                     }
                 }
             }
 
-            // PLAYER CONTROLS
-            if (controls.isLocked) {
-                velocity.x -= velocity.x * 10.0 * deltaControl;
-                velocity.z -= velocity.z * 10.0 * deltaControl;
-                velocity.y -= velocity.y * 10.0 * deltaControl;
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize();
-                const speed = (moveDown && !isFreeCam) ? runSpeed : walkSpeed; 
-                if (moveForward || moveBackward) velocity.z -= direction.z * speed * 20.0 * deltaControl;
-                if (moveLeft || moveRight) velocity.x -= direction.x * speed * 20.0 * deltaControl;
-                controls.moveRight(-velocity.x * deltaControl);
-                controls.moveForward(-velocity.z * deltaControl);
-                if (isFreeCam) {
-                    if (moveUp) velocity.y += speed * 20.0 * deltaControl; 
-                    if (moveDown) velocity.y -= speed * 20.0 * deltaControl; 
-                    controls.getObject().position.y += velocity.y * deltaControl;
+            // Spawn NPC sistem
+            if (isPlaying && !isPaused && seekSpeed === 0) {
+                spawnTimer += deltaClock;
+                if (spawnTimer > nextSpawnThreshold) { 
+                    if (activeWalkers.length < maxWalkers) spawnOneWalker(); 
+                    spawnTimer = 0;
+                    nextSpawnThreshold = 0.5 + Math.random() * 0.5; 
+                }
+                updateCrowd(deltaClock);
+            }
+            
+            // Logika Swap Model Karakter (Jalan <-> Diam)
+            if (isPlaying && kiryuGroup && majimaGroup && majimaMeshes.walkMesh && kiryuMeshes.walkMesh) {
+                const t = cutsceneTime;
+                
+                // --- MAJIMA STATE MACHINE ---
+                if (t < MAJIMA_WALK_TIME) {
+                    // Mode Jalan
+                    majimaMeshes.walkMesh.visible = true; majimaMeshes.idleMesh.visible = false;
+                    majimaGroup.position.z = MAJIMA_START_Z - (SPEED * t);
+                    
+                    // Slow motion saat mau berhenti
+                    if (t > MAJIMA_WALK_TIME - 1.0) {
+                         if(majimaMeshes.walkMixer) majimaMeshes.walkMixer.timeScale = (MAJIMA_WALK_TIME - t); 
+                    } else {
+                         if(majimaMeshes.walkMixer) majimaMeshes.walkMixer.timeScale = 1.3;
+                    }
                 } else {
-                    controls.getObject().position.y = 1.6;
+                    // Mode Diam
+                    majimaGroup.position.z = MAJIMA_STOP_Z; 
+                    majimaMeshes.walkMesh.visible = false; 
+                    majimaMeshes.idleMesh.visible = true;
+                    
+                    // Kontrol mulut bicara
+                    if(majimaMeshes.idleAction) {
+                        if (t < MAJIMA_SPEAK_START) {
+                            majimaMeshes.idleAction.paused = true; // Diam
+                            majimaMeshes.idleAction.time = 0; 
+                        } else if (t < MAJIMA_SPEAK_END) {
+                            majimaMeshes.idleAction.paused = false; // Bicara
+                            majimaMeshes.idleAction.timeScale = 1.2; 
+                        } else {
+                            majimaMeshes.idleAction.paused = true; // Diam lagi
+                            majimaMeshes.idleAction.time = 96; 
+                        }
+                    }
+                }
+
+                // --- KIRYU STATE MACHINE ---
+                const startWalkTime = MAJIMA_WALK_TIME + KIRYU_DELAY_TIME; 
+                const endWalkTime = startWalkTime + KIRYU_WALK_TIME;       
+                
+                if (t < startWalkTime) {
+                    // Kiryu Diam Awal
+                    kiryuMeshes.walkMesh.visible = false; kiryuMeshes.idleMesh.visible = true; kiryuGroup.position.z = KIRYU_START_Z; 
+                } else if (t < endWalkTime) {
+                    // Kiryu Jalan
+                    kiryuMeshes.walkMesh.visible = true; kiryuMeshes.idleMesh.visible = false;
+                    const walkDuration = t - startWalkTime; kiryuGroup.position.z = KIRYU_START_Z + (SPEED * walkDuration);
+                    if (t > endWalkTime - 1.0) {
+                         if(kiryuMeshes.walkMixer) kiryuMeshes.walkMixer.timeScale = (endWalkTime - t);
+                    } else {
+                         if(kiryuMeshes.walkMixer) kiryuMeshes.walkMixer.timeScale = 1.3;
+                    }
+                } else {
+                    // Kiryu Diam Akhir
+                    kiryuMeshes.walkMesh.visible = false; kiryuMeshes.idleMesh.visible = true; kiryuGroup.position.z = KIRYU_STOP_Z; 
                 }
             }
-            prevTime = time;
-            composer.render();
+            prevTime = realTime;
+            composer.render(); // Render final scene
         }
     </script>
 </body>
